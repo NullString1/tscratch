@@ -156,6 +156,15 @@ class Extension(Plugin, environments=[Environment.HYPRLAND]):
         for group_name, group_conf in self.config.items():
             if isinstance(group_conf, dict) and "windows" in group_conf:
                 self.groups[group_name] = TiledGroup(group_name, group_conf)
+                new_group = self.groups[group_name]
+                for preset in new_group.presets:
+                    if len(preset) != len(new_group.windows):
+                        self.log.warning(
+                            "Group '%s' has a preset with %d values but %d windows; this preset will be ignored",
+                            group_name,
+                            len(preset),
+                            len(new_group.windows),
+                        )
                 self.log.info(
                     "Configured group '%s' (orientation: %s, layout: %s, windows: %s)",
                     group_name,
@@ -185,6 +194,16 @@ class Extension(Plugin, environments=[Environment.HYPRLAND]):
             for c in clients:
                 if c["address"] == item.address and item.matches(c):
                     return c
+        # Prefer matching clients parked in this plugin's special workspaces to
+        # avoid latching onto unrelated user windows sharing the same class.
+        def parked(c: ClientInfo) -> bool:
+            ws = c.get("workspace", {})
+            return isinstance(ws, dict) and (ws.get("name") or "").startswith("special:tscratch")
+
+        for c in clients:
+            if item.matches(c) and parked(c):
+                item.address = c["address"]
+                return c
         for c in clients:
             if item.matches(c):
                 item.address = c["address"]
@@ -257,7 +276,7 @@ class Extension(Plugin, environments=[Environment.HYPRLAND]):
                     if i == len(unconstrained) - 1:
                         sizes[it.name] = max(0, remaining_space)
                     else:
-                        sz = int(remaining_space * (it.ratio / total_ratio))
+                        sz = max(0, int(remaining_space * (it.ratio / total_ratio)))
                         sizes[it.name] = sz
                         remaining_space -= sz
                 break
@@ -470,10 +489,10 @@ class Extension(Plugin, environments=[Environment.HYPRLAND]):
         return f"Unknown tscratch command: {cmd}"
 
     async def run_tscratch_toggle(self, window_name: str = "") -> str:
-        async with self._lock:
-            if not window_name:
-                return await self.run_tscratch_toggle_all()
+        if not window_name:
+            return await self.run_tscratch_toggle_all()
 
+        async with self._lock:
             group, item = self._find_window(window_name)
             if not group or not item:
                 return f"Window '{window_name}' not found in any group"
@@ -518,6 +537,9 @@ class Extension(Plugin, environments=[Environment.HYPRLAND]):
                 return f"Window '{window_name}' not found"
             client = await self._ensure_window_alive(item)
             item.address = client["address"]
+            if item.visible:
+                await self.backend.focus_window(item.address)
+                return f"Showing {window_name} (already visible)"
             item.visible = True
             await self._apply_layout(group, animate_in=item)
             await self.backend.focus_window(item.address)
@@ -536,24 +558,28 @@ class Extension(Plugin, environments=[Environment.HYPRLAND]):
 
     async def run_tscratch_toggle_all(self, group_name: str = "") -> str:
         async with self._lock:
-            if group_name:
-                group = self.groups.get(group_name)
-            else:
-                group = next(iter(self.groups.values()), None)
-            if not group:
-                return f"Group '{group_name}' not found"
+            return await self._toggle_group(group_name)
 
-            any_visible = any(w.visible for w in group.windows.values())
-            for w in group.windows.values():
-                if any_visible:
-                    w.visible = False
-                else:
-                    await self._ensure_window_alive(w)
-                    w.visible = True
-            await self._apply_layout(group)
-            if any_visible and group.restore_focus and self.previously_focused_window:
-                await self.backend.focus_window(self.previously_focused_window)
-            return f"Toggled group '{group.name}' -> {'hidden' if any_visible else 'visible'}"
+    async def _toggle_group(self, group_name: str = "") -> str:
+        """Toggle a group's windows. Caller must hold self._lock."""
+        if group_name:
+            group = self.groups.get(group_name)
+        else:
+            group = next(iter(self.groups.values()), None)
+        if not group:
+            return "No groups configured" if not group_name else f"Group '{group_name}' not found"
+
+        any_visible = any(w.visible for w in group.windows.values())
+        for w in group.windows.values():
+            if any_visible:
+                w.visible = False
+            else:
+                await self._ensure_window_alive(w)
+                w.visible = True
+        await self._apply_layout(group)
+        if any_visible and group.restore_focus and self.previously_focused_window:
+            await self.backend.focus_window(self.previously_focused_window)
+        return f"Toggled group '{group.name}' -> {'hidden' if any_visible else 'visible'}"
 
     async def run_tscratch_hide_all(self) -> str:
         async with self._lock:
@@ -574,10 +600,15 @@ class Extension(Plugin, environments=[Environment.HYPRLAND]):
             if len(ratios) != len(group.windows):
                 return f"Expected {len(group.windows)} ratio values for group '{group_name}'"
 
-            for w, r_str in zip(group.windows.values(), ratios):
-                w.ratio = float(r_str)
+            try:
+                new_ratios = [float(r) for r in ratios]
+            except ValueError:
+                return f"Invalid ratio values: {', '.join(ratios)} (use numbers like 0.7)"
+
+            for w, r in zip(group.windows.values(), new_ratios):
+                w.ratio = r
             await self._apply_layout(group)
-            return f"Updated ratios for '{group_name}' to {ratios}"
+            return f"Updated ratios for '{group_name}' to {new_ratios}"
 
     async def run_tscratch_cycle_ratio(self, group_name: str = "") -> str:
         """Cycle through configured presets for a group."""
@@ -591,8 +622,12 @@ class Extension(Plugin, environments=[Environment.HYPRLAND]):
                 [0.5, 0.5],
                 [0.2, 0.8],
             ]
-            group._preset_index = (group._preset_index + 1) % len(presets)
-            target_preset = presets[group._preset_index]
+            valid = [p for p in presets if len(p) == len(group.windows)]
+            if not valid:
+                return f"Presets for '{group.name}' must have {len(group.windows)} values each"
+
+            target_preset = valid[group._preset_index % len(valid)]
+            group._preset_index = (group._preset_index + 1) % len(valid)
 
             for w, r in zip(group.windows.values(), target_preset):
                 w.ratio = float(r)
@@ -601,22 +636,23 @@ class Extension(Plugin, environments=[Environment.HYPRLAND]):
 
     async def run_tscratch_cycle(self, group_name: str = "") -> str:
         """Focus the next visible window in the group."""
-        group = self.groups.get(group_name) or next(iter(self.groups.values()), None)
-        if not group:
-            return "No group found"
-        visible = [w for w in group.windows.values() if w.visible and w.address]
-        if not visible:
-            return "No visible windows in group"
+        async with self._lock:
+            group = self.groups.get(group_name) or next(iter(self.groups.values()), None)
+            if not group:
+                return "No groups configured" if not group_name else f"Group '{group_name}' not found"
+            visible = [w for w in group.windows.values() if w.visible and w.address]
+            if not visible:
+                return "No visible windows in group"
 
-        curr_focused = self.state.active_window
-        curr_idx = -1
-        for i, w in enumerate(visible):
-            if w.address == curr_focused:
-                curr_idx = i
-                break
-        next_idx = (curr_idx + 1) % len(visible)
-        await self.backend.focus_window(visible[next_idx].address)
-        return f"Focused {visible[next_idx].name}"
+            curr_focused = self.state.active_window
+            curr_idx = -1
+            for i, w in enumerate(visible):
+                if w.address == curr_focused:
+                    curr_idx = i
+                    break
+            next_idx = (curr_idx + 1) % len(visible)
+            await self.backend.focus_window(visible[next_idx].address)
+            return f"Focused {visible[next_idx].name}"
 
     async def run_tscratch_swap(self, win1_name: str, win2_name: str) -> str:
         """Swap positions of two windows in their group."""
@@ -648,29 +684,33 @@ class Extension(Plugin, environments=[Environment.HYPRLAND]):
         if not is_scratchpad:
             self.previously_focused_window = clean_addr
             # Check groups with hide_on_focus_lost
-            for group in self.groups.values():
-                if group.hide_on_focus_lost and any(w.visible for w in group.windows.values()):
-                    for w in group.windows.values():
-                        w.visible = False
-                    await self._apply_layout(group)
+            async with self._lock:
+                for group in self.groups.values():
+                    if group.hide_on_focus_lost and any(w.visible for w in group.windows.values()):
+                        for w in group.windows.values():
+                            w.visible = False
+                        await self._apply_layout(group)
 
     async def event_closewindow(self, addr: str) -> None:
         """Handle window closed by user (e.g. SUPER + Q)."""
         group, item = self._find_group_by_address(addr)
         if item and group:
             self.log.info("Scratchpad window '%s' closed", item.name)
-            item.address = ""
-            item.visible = False
-            await self._apply_layout(group)
+            async with self._lock:
+                item.address = ""
+                item.visible = False
+                await self._apply_layout(group)
 
     async def event_monitoradded(self, monitor_name: str) -> None:
         """Recalculate layout when a monitor is connected."""
-        for group in self.groups.values():
-            if any(w.visible for w in group.windows.values()):
-                await self._apply_layout(group)
+        async with self._lock:
+            for group in self.groups.values():
+                if any(w.visible for w in group.windows.values()):
+                    await self._apply_layout(group)
 
     async def event_monitorremoved(self, monitor_name: str) -> None:
         """Recalculate layout when a monitor is disconnected."""
-        for group in self.groups.values():
-            if any(w.visible for w in group.windows.values()):
-                await self._apply_layout(group)
+        async with self._lock:
+            for group in self.groups.values():
+                if any(w.visible for w in group.windows.values()):
+                    await self._apply_layout(group)

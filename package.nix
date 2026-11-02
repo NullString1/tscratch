@@ -6,7 +6,7 @@
 
 stdenvNoCC.mkDerivation {
   pname = "tscratch";
-  version = "0.1.0";
+  version = "0.1.1";
 
   src = ./.;
 
@@ -31,5 +31,11 @@ stdenvNoCC.mkDerivation {
     homepage = "https://github.com/nullstring1/tscratch";
     license = licenses.mit;
     platforms = platforms.linux;
+    maintainers = [
+      {
+        name = "nullstring1";
+        github = "nullstring1";
+      }
+    ];
   };
 }

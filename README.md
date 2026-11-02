@@ -165,6 +165,9 @@ In your Home Manager configuration (e.g. `pyprland.nix`):
 }
 ```
 
+Optional: supervised systemd user service with automated stale socket cleanup.
+
+```nix
   # Recommended: Supervised systemd user service with automated stale socket cleanup
   systemd.user.services.pyprland = {
     Unit = {
@@ -206,7 +209,7 @@ In your Home Manager configuration (e.g. `pyprland.nix`):
 | `order` | `list[string]` | `[]` | Explicit left-to-right window ordering |
 | `presets` | `list[list[float]]` | `[[0.8, 0.2], ...]` | Preset ratio cycles for `pypr tscratch cycle_ratio` |
 | `restore_focus` | `bool` | `true` | Restores keyboard focus to previous active window on hide |
-| `hide_on_focus_lost` | `bool` | `false` | Automatically hide all group windows when clicking onto desktop |
+| `hide_on_focus_lost` | `bool` | `false` | Automatically hide all group windows whenever any other (non-scratchpad) window gains focus |
 | `pinned` | `bool` | `false` | Pin floating scratchpads across all workspaces |
 | `monitor` | `string` | `"active"` | Target monitor name (`"active"` follows focused monitor) |
 
