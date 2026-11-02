@@ -1,0 +1,69 @@
+# Pyprland Configuration with Tiled Scratchpads (tscratch)
+
+[pyprland]
+plugins_paths = ["~/.config/pypr/plugins"]
+plugins = [
+  "scratchpads",
+  "external:tscratch"
+]
+
+# -----------------------------------------------------------------------------
+# Standard Pyprland Scratchpad (e.g., VPN, Music Player)
+# -----------------------------------------------------------------------------
+[scratchpads.vpn]
+animation = "fromTop"
+class = "Cloudflare Zero Trust"
+match_by = "class"
+process_tracking = false
+close_on_hide = true
+lazy = true
+command = "warp-show"
+
+# -----------------------------------------------------------------------------
+# Tiled Compound Scratchpad Group: 'dev'
+# -----------------------------------------------------------------------------
+[tscratch.dev]
+# Overall floating container geometry (relative to active monitor)
+width = "94%"
+height = "88%"
+top = "6%"
+gap = 14
+
+# Tiling layout & behavior
+orientation = "horizontal"    # "horizontal" (columns) or "vertical" (rows)
+layout = "columns"            # "columns" or "master-stack" (for 3+ windows)
+restore_focus = true          # Restore focus to previous active window on hide
+hide_on_focus_lost = false    # Set to true to auto-hide when clicking outside
+pinned = false                # Keep floating across all workspace switches
+
+# Presets for runtime cycling via `pypr tscratch cycle_ratio dev`
+presets = [
+  [0.8, 0.2],
+  [0.5, 0.5],
+  [0.2, 0.8]
+]
+
+# Window 1: Terminal
+[tscratch.dev.windows.term]
+command = "ghostty --class=scratchpad.ghostty"
+class = "scratchpad.ghostty"
+ratio = 0.8
+min_width = "750px"
+max_width = "1650px"
+min_height = "500px"
+max_height = "950px"
+animation = "fromTop"
+# When solo, automatically centers and expands up to max_width / max_height
+
+# Window 2: AI / Web Sidebar
+[tscratch.dev.windows.gemini]
+command = "brave --profile-directory=Default --app=https://gemini.google.com/app"
+initialClass = "brave-gemini.google.com__app-Default"
+ratio = 0.2
+min_width = "340px"
+max_width = "800px"
+min_height = "600px"
+max_height = "980px"
+animation = "fromRight"
+solo_position = "right"
+solo_width = "22%"
