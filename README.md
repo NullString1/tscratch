@@ -105,7 +105,7 @@ In your Home Manager configuration (e.g. `pyprland.nix`):
     command = "ghostty --class=scratchpad.ghostty"
     class = "scratchpad.ghostty"
     ratio = 0.8
-    min_width = "750px"
+    min_width = "350px"
     max_width = "1650px"
     min_height = "500px"
     max_height = "950px"
@@ -116,12 +116,12 @@ In your Home Manager configuration (e.g. `pyprland.nix`):
     initialClass = "brave-gemini.google.com__app-Default"
     ratio = 0.2
     min_width = "340px"
-    max_width = "800px"
+    max_width = "1650px"
     min_height = "600px"
     max_height = "980px"
     animation = "fromRight"
     solo_position = "right"
-    solo_width = "22%"
+    solo_width = "420px"
   '';
 
   # Recommended: Supervised systemd user service with automated stale socket cleanup
