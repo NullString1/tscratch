@@ -591,9 +591,13 @@ class Extension(Plugin, environments=[Environment.HYPRLAND]):
                 await self.backend.focus_window(self.previously_focused_window)
             return "Hidden all scratchpads"
 
-    async def run_tscratch_ratio(self, group_name: str, *ratios: str) -> str:
+    async def run_tscratch_ratio(self, *args: str) -> str:
         """Set runtime tiling ratios: pypr tscratch ratio <group> 0.7 0.3"""
         async with self._lock:
+            tokens = " ".join(args).split()
+            if not tokens:
+                return "Usage: pypr tscratch ratio <group> <r1> <r2> ..."
+            group_name, ratios = tokens[0], tokens[1:]
             group = self.groups.get(group_name)
             if not group:
                 return f"Group '{group_name}' not found"
@@ -654,8 +658,13 @@ class Extension(Plugin, environments=[Environment.HYPRLAND]):
             await self.backend.focus_window(visible[next_idx].address)
             return f"Focused {visible[next_idx].name}"
 
-    async def run_tscratch_swap(self, win1_name: str, win2_name: str) -> str:
+    async def run_tscratch_swap(self, *args: str) -> str:
         """Swap positions of two windows in their group."""
+        tokens = " ".join(args).split() if args else []
+        if len(tokens) != 2:
+            return "Usage: pypr tscratch swap <win1> <win2>"
+        win1_name, win2_name = tokens
+
         async with self._lock:
             g1, w1 = self._find_window(win1_name)
             g2, w2 = self._find_window(win2_name)
