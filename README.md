@@ -66,7 +66,81 @@ In stock Hyprland and standard scratchpad managers, scratchpads are treated as i
 
 ---
 
-### NixOS / Home Manager Setup
+### NixOS / Flake Setup (Recommended)
+
+1. **Add `tscratch` to your `flake.nix` inputs**:
+   ```nix
+   inputs = {
+     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+     tscratch.url = "github:nullstring1/tscratch"; # or path to local checkout
+   };
+   ```
+
+2. **Apply the overlay** in your NixOS or Home Manager configuration:
+   ```nix
+   nixpkgs.overlays = [
+     inputs.tscratch.overlays.default
+   ];
+   ```
+   *The overlay automatically injects `tscratch` directly into `pkgs.pyprland`'s Python environment. No manual file copying or `plugins_paths` needed!*
+
+3. **Install the package and configure `~/.config/pypr/config.toml`**:
+   ```nix
+   { pkgs, ... }:
+   {
+     home.packages = with pkgs; [
+       pyprland  # Automatically includes tscratch via overlay
+     ];
+
+     home.file.".config/pypr/config.toml".text = ''
+       [pyprland]
+       plugins = [
+         "scratchpads",
+         "external:tscratch"
+       ]
+
+       [tscratch.dev]
+       width = "94%"
+       height = "88%"
+       top = "6%"
+       gap = 14
+       orientation = "horizontal"
+       layout = "columns"
+       restore_focus = true
+       presets = [
+         [0.8, 0.2],
+         [0.5, 0.5],
+         [0.2, 0.8]
+       ]
+
+       [tscratch.dev.windows.term]
+       command = "ghostty --class=scratchpad.ghostty"
+       class = "scratchpad.ghostty"
+       ratio = 0.8
+       min_width = "350px"
+       max_width = "1650px"
+       min_height = "500px"
+       max_height = "950px"
+       animation = "fromTop"
+
+       [tscratch.dev.windows.gemini]
+       command = "brave --profile-directory=Default --app=https://gemini.google.com/app"
+       initialClass = "brave-gemini.google.com__app-Default"
+       ratio = 0.2
+       min_width = "340px"
+       max_width = "1650px"
+       min_height = "600px"
+       max_height = "980px"
+       animation = "fromRight"
+       solo_position = "right"
+       solo_width = "420px"
+     '';
+   }
+   ```
+
+---
+
+### Manual Setup (Without Flakes)
 
 In your Home Manager configuration (e.g. `pyprland.nix`):
 
@@ -75,7 +149,7 @@ In your Home Manager configuration (e.g. `pyprland.nix`):
 {
   home.packages = with pkgs; [ pyprland ];
 
-  # Link plugin
+  # Link plugin manually
   home.file.".config/pypr/plugins/tscratch.py".source = ./tscratch.py;
 
   # Pyprland configuration
@@ -86,43 +160,10 @@ In your Home Manager configuration (e.g. `pyprland.nix`):
       "scratchpads",
       "external:tscratch"
     ]
-
-    [tscratch.dev]
-    width = "94%"
-    height = "88%"
-    top = "6%"
-    gap = 14
-    orientation = "horizontal"
-    layout = "columns"
-    restore_focus = true
-    presets = [
-      [0.8, 0.2],
-      [0.5, 0.5],
-      [0.2, 0.8]
-    ]
-
-    [tscratch.dev.windows.term]
-    command = "ghostty --class=scratchpad.ghostty"
-    class = "scratchpad.ghostty"
-    ratio = 0.8
-    min_width = "350px"
-    max_width = "1650px"
-    min_height = "500px"
-    max_height = "950px"
-    animation = "fromTop"
-
-    [tscratch.dev.windows.gemini]
-    command = "brave --profile-directory=Default --app=https://gemini.google.com/app"
-    initialClass = "brave-gemini.google.com__app-Default"
-    ratio = 0.2
-    min_width = "340px"
-    max_width = "1650px"
-    min_height = "600px"
-    max_height = "980px"
-    animation = "fromRight"
-    solo_position = "right"
-    solo_width = "420px"
+    ...
   '';
+}
+```
 
   # Recommended: Supervised systemd user service with automated stale socket cleanup
   systemd.user.services.pyprland = {
