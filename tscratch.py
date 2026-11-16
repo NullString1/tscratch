@@ -438,21 +438,27 @@ class Extension(Plugin, environments=[Environment.HYPRLAND]):
             await asyncio.sleep(0.016)  # 1 frame delay
             await self.backend.execute(f"tagwindow -pypr_noanim address:{animate_in.address}")
 
+        clients = await self.backend.get_clients()
+        client_map = {c["address"]: c for c in clients}
+
         batch_commands: list[str] = []
         for item in group.windows.values():
+            is_pinned = bool(client_map.get(item.address, {}).get("pinned", False)) if item.address else False
             if item.visible and item.name in geometries:
                 x, y, w, h = geometries[item.name]
                 batch_commands.append(f"movetoworkspacesilent {active_ws},address:{item.address}")
                 batch_commands.append(f"alterzorder top,address:{item.address}")
                 batch_commands.append(f"resizewindowpixel exact {w} {h},address:{item.address}")
                 batch_commands.append(f"movewindowpixel exact {x} {y},address:{item.address}")
-                if item.pinned or group.pinned:
+                if (item.pinned or group.pinned) and not is_pinned:
                     batch_commands.append(f"pin address:{item.address}")
             elif not item.visible and item.address:
                 if item.close_on_hide:
                     batch_commands.append(f"closewindow address:{item.address}")
                     item.address = ""
                 else:
+                    if is_pinned:
+                        batch_commands.append(f"pin address:{item.address}")
                     batch_commands.append(f"movetoworkspacesilent special:tscratch_{item.name},address:{item.address}")
 
         if batch_commands:
